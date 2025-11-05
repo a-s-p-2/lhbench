@@ -117,7 +117,9 @@ class TPCDSDataLoadSpec(BenchmarkSpec):
         ])
         # To access the public TPCDS parquet files on S3
         self.spark_confs.extend(["spark.hadoop.fs.s3.useRequesterPaysHeader=true"])
-
+        
+        ### 20250928test -Requester Pays Bucket Zugriff
+        # self.spark_confs.extend(["spark.hadoop.fs.s3.useRequesterPaysHeader","true"])
 
 class TPCDSBenchmarkSpec(BenchmarkSpec):
     """
@@ -160,6 +162,10 @@ class IncrementalTPCDSBenchmarkSpec(BenchmarkSpec):
             "--exclude-nulls", str(exclude_nulls),
         ])
         self.spark_confs.extend(["spark.hadoop.fs.s3.useRequesterPaysHeader=true"])
+
+        ### 20250928test -Requester Pays Bucket Zugriff
+        # self.spark_confs.extend(["spark.hadoop.fs.s3.useRequesterPaysHeader","true"])
+        
 
 class MergeMicroBenchmarkSpec(BenchmarkSpec):
     def __init__(self, size_in_gb, merge_on_read=False, source_percent=None, table_update_percent=None, **kwargs):
@@ -456,7 +462,13 @@ touch {self.completed_file}
         # Note: Deleting existing JARs instead of sbt clean is faster
         if os.path.exists("target"):
             run_cmd("""find target -name "*.jar" -type f -delete""", stream_output=True)
-        run_cmd("build/sbt assembly", stream_output=True)
+
+        # Update_ClaudeCode    
+        # Use bash wrapper script to handle sbt server prompts
+        run_cmd("./run_sbt.sh assembly", stream_output=True)
+        # Update_20250824 Anpassungen an Windows-CMD      
+        # run_cmd("sbt assembly", stream_output=True)
+
         (_, out, _) = run_cmd("find target -name *.jar")
         print(">>> Benchmark JAR compiled\n")
 
@@ -466,7 +478,27 @@ touch {self.completed_file}
         scp_cmd = \
             f"scp -C -i {ssh_id_file} {jar_local_path} {ssh_user}@{cluster_hostname}:{jar_remote_path}"
         print(scp_cmd)
-        run_cmd(scp_cmd, stream_output=True)
+      
+        # Beginn_Update_20250726
+        # Fehlerbehandlung fuer den JAR-Upload-Prozess
+        try:
+            # Pruefen, ob der JAR-Pfad existiert und gueltig ist
+            if not jar_local_path:
+                raise FileNotFoundError("JAR-Datei wurde nicht gefunden: Kein Pfad wurde vom Build-Prozess zurueckgegeben. Moegliche Ursache: Der Build-Prozess hat keine JAR erzeugt.")
+            if not os.path.exists(jar_local_path):
+                raise FileNotFoundError(f"Die erzeugte JAR-Datei existiert nicht am Pfad: {jar_local_path}. Bitte pruefen Sie, ob der Build erfolgreich war und der Pfad korrekt ist.")
+            # Upload per SCP
+            result = run_cmd(scp_cmd, stream_output=True)
+            if result[0] != 0:
+                raise RuntimeError(f"SCP-Upload fehlgeschlagen: {scp_cmd}. Ueberpruefen Sie Netzwerkverbindung, SSH-Zugangsdaten und Schreibrechte auf dem Zielsystem.")
+        except FileNotFoundError as e:
+            raise FileNotFoundError(str(e))
+        except RuntimeError as e:
+            raise RuntimeError(str(e))
+        except Exception as e:
+            raise Exception(f"Unerwarteter Fehler beim Hochladen der JAR: {str(e)}")
+        # Ende_Update_20250726
+
         print(">>> Benchmark JAR uploaded to cluster\n")
         return f"~/{jar_remote_path}"
 
@@ -543,6 +575,9 @@ fi
             script_file = open(script_file_name, "w")
             script_file.write(script_file_text)
             script_file.close()
+
+            # Zeilenenden konvertieren (nur in WSL/Linux noetig)
+            subprocess.run(["dos2unix", script_file_name])
 
             scp_cmd = (
                     f"scp -i {ssh_id_file} {script_file_name}" +
@@ -637,10 +672,25 @@ fi
             if os.path.exists(local_maven_delta_dir):
                 run_cmd(f"rm -rf {local_maven_delta_dir}", stream_output=True)
                 print(f"Cleared local maven cache at {local_maven_delta_dir}")
-            run_cmd("build/sbt publishLocal", stream_output=False, throw_on_error=True)
+
+                # Update_ClaudeCode
+                # Use bash wrapper script to handle sbt server prompts
+                run_cmd("./run_sbt.sh publishLocal", stream_output=False, throw_on_error=True)
+                
+            # Update_20250824 Anpassungen an Windows-CMD
+            # run_cmd("sbt publishLocal", stream_output=False, throw_on_error=True)
+
 
             # Get the new version
-            (_, out, _) = run_cmd("""build/sbt "show version" """)
+
+            # Update_ClaudeCode
+            # Use bash wrapper script to handle sbt server prompts
+            (_, out, _) = run_cmd("""./run_sbt.sh "show version" """)
+            
+            # Update_20250824 Anpassungen an Windows-CMD
+            # (_, out, _) = run_cmd("""sbt "show version" """)
+
+
             version = out.decode("utf-8").strip().rsplit("\n", 1)[-1].rsplit(" ", 1)[-1].strip()
             if not version:
                 raise Exception(f"Could not find the version from the sbt output:\n--\n{out}\n-")

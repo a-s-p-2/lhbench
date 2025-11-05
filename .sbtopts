@@ -1,0 +1,6 @@
+-Dsbt.server=false
+-Dsbt.client=false
+-Dsbt.server.autostart=false
+-Dsbt.ivy.home=project/.ivy
+-Dsbt.global.base=project/.sbtboot
+-Dsbt.boot.directory=project/.boot

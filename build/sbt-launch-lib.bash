@@ -183,7 +183,10 @@ run() {
     $(get_mem_opts $sbt_mem) \
     ${java_opts} \
     ${java_args[@]} \
-    -jar "$sbt_jar" \
+
+# Anpassungen_20250830    -- Manuelles Platzieren der .jar Datei
+#   -jar "$sbt_jar" \
+	-jar "C:\Users\alexander.schmid\Documents\GitHub\lhbench\build\sbt-launch-1.5.5.jar" \
     "${sbt_commands[@]}" \
     "${residual_args[@]}"
 }

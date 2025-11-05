@@ -183,6 +183,10 @@ def parse_args():
         "--ssh-user",
         default="hadoop",
         help="The user which is used to communicate with the master via SSH.")
+    parser.add_argument(
+        "--remote-jar",
+        help="(Optional) Use an already uploaded jar on the remote host. Example: 20250926-1-test-benchmarks.jar"
+    )
 
     parsed_args, parsed_passthru_args = parser.parse_known_args()
     return parsed_args, parsed_passthru_args
@@ -200,7 +204,18 @@ def run_single_benchmark(benchmark_name, benchmark_spec, other_args):
                           use_spark_shell=True, local_delta_dir=other_args.use_local_delta_dir)
     benchmark_dir = os.path.dirname(os.path.abspath(__file__))
     with WorkingDirectory(benchmark_dir):
-        benchmark.run(other_args.cluster_hostname, other_args.ssh_id_file, other_args.ssh_user)
+        # If user provided --remote-jar, skip the upload step and use the existing jar on remote host.
+        if getattr(other_args, "remote_jar", None):
+            jar_remote = other_args.remote_jar
+            jar_path_in_cluster = f"~/{jar_remote}"
+            print(f">>> Skipping local JAR upload. Using remote JAR: {jar_path_in_cluster}")
+            # Install dependencies and start benchmark using the provided remote JAR.
+            benchmark.install_dependencies_via_ssh(other_args.cluster_hostname, other_args.ssh_id_file, other_args.ssh_user)
+            benchmark.start_benchmark_via_ssh(other_args.cluster_hostname, other_args.ssh_id_file, jar_path_in_cluster, other_args.ssh_user)
+            Benchmark.wait_for_completion(other_args.cluster_hostname, other_args.ssh_id_file, benchmark.benchmark_id, other_args.ssh_user)
+        else:
+            # Default flow: build, upload jar and run
+            benchmark.run(other_args.cluster_hostname, other_args.ssh_id_file, other_args.ssh_user)
 
 
 if __name__ == "__main__":
